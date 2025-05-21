@@ -1,26 +1,32 @@
-from flask import Flask, url_for, render_template, request, redirect
+import os
+import flask
 
-import sqlite3
 
-app = Flask(__name__)
 
-def abrirConexion():
-    conexion = sqlite3.connect("datos.sqlite")
-    conexion.row_factory = sqlite3.Row
-    return conexion
+def create_app():
+    app = Flask(__name__, instance_relative_config=True)
+    app.config.from_mapping(
+        SECRET_KEY='dev',
+        DATABASE=os.path.join(app.instance_path, 'flaskr.sqlite'),
+    )
 
-def cerrarConexion():
-    global db
-    if db is not None:
-        db.close()
-        db = None
+    # Crear la carpeta instance si no existe
+    try:
+        os.makedirs(app.instance_path)
+    except OSError:
+        pass
 
-def dict_factory(cursor, row):
-   """Arma un diccionario con los valores de la fila."""
-   fields = [column[0] for column in cursor.description]
-   return {key: value for key, value in zip(fields, row)}
+    # Importar y registrar la base de datos
+    from . import db
+    db.init_app(app)
 
-@app.route("/")
-def hola_mundo():
-    return "<p>Hello, World!</p>"
+    # Registrar blueprint de autenticación
+    from . import auth
+    app.register_blueprint(auth.bp)
 
+    # Registrar blueprint del blog
+    from . import blog
+    app.register_blueprint(blog.bp)
+    app.add_url_rule('/', endpoint='index')
+
+    return app
