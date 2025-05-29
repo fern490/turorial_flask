@@ -1,39 +1,63 @@
-import os
+from flask import Flask, url_for, render_template, request, redirect, flash, session
+import sqlite3
+from werkzeug.security import check_password_hash
 
-from flask import Flask
+app = Flask(__name__)
+app.secret_key = 'dev'  # Necesario para sesiones y mensajes flash
 
+# Base de datos
+def get_db():
+    conn = sqlite3.connect('datos.sqlite')
+    conn.row_factory = sqlite3.Row
+    return conn
 
-def create_app(test_config=None):
-    """Create and configure an instance of the Flask application."""
-    app = Flask(__name__, instance_relative_config=True)
-    app.config.from_mapping(
-        SECRET_KEY="dev",
-        DATABASE=os.path.join(app.instance_path, "flaskr.sqlite"),
-    )
+# Rutas
+@app.route('/')
+def index():
+    user = session.get('user_id')
+    return f'index - logueado como: {user}' if user else 'index - no logueado'
 
-    if test_config is None:
-        app.config.from_pyfile("config.py", silent=True)
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        return do_the_login()
     else:
-        app.config.update(test_config)
-    try:
-        os.makedirs(app.instance_path)
-    except OSError:
-        pass
+        return show_the_login_form()
 
-    @app.route("/hello")
-    def hello():
-        return "Hello, World!"
-    
-    from . import db
+@app.route('/user/<username>')
+def profile(username):
+    return f'{username}\'s profile'
 
-    db.init_app(app)
+# Funciones auxiliares
+def do_the_login():
+    username = request.form['username']
+    password = request.form['password']
 
-    from . import auth
-    from . import blog
+    db = get_db()
+    user = db.execute(
+        'SELECT * FROM user WHERE username = ?', (username,)
+    ).fetchone()
 
-    app.register_blueprint(auth.bp)
-    app.register_blueprint(blog.bp)
+    error = None
+    if user is None:
+        error = 'Incorrect username.'
+    elif not check_password_hash(user['password'], password):
+        error = 'Incorrect password.'
 
-    app.add_url_rule("/", endpoint="index")
+    if error is None:
+        session.clear()
+        session['user_id'] = user['id']
+        return redirect(url_for('index'))
 
-    return app
+    flash(error)
+    return redirect(url_for('login'))
+
+def show_the_login_form():
+    return render_template('login.html')
+
+# Debug print
+with app.test_request_context():
+    print(url_for('index'))
+    print(url_for('login'))
+    print(url_for('login', next='/'))
+    print(url_for('profile', username='John Doe'))
